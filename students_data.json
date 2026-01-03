@@ -1,0 +1,88 @@
+[
+    {
+        "roll_no": "2601",
+        "name": "John Doe",
+        "marks": {
+            "Matches": 78.0,
+            "Physics": 77.0,
+            "Chemistry": 65.0,
+            "English": 85.0,
+            "Computer Science": 89.0
+        },
+        "total": 394.0,
+        "percentage": 78.8,
+        "grade": "B"
+    },
+    {
+        "roll_no": "2602",
+        "name": "Steve Harington",
+        "marks": {
+            "Matches": 80.0,
+            "Physics": 79.0,
+            "Chemistry": 70.0,
+            "English": 55.0,
+            "CS": 85.0
+        },
+        "total": 369.0,
+        "percentage": 73.8,
+        "grade": "B"
+    },
+    {
+        "roll_no": "2603",
+        "name": "Dustin",
+        "marks": {
+            "Mathematics": 95.0,
+            "Physics": 99.0,
+            "Chemistry": 75.0,
+            "English": 70.0,
+            "Computer Science": 80.0
+        },
+        "total": 419.0,
+        "percentage": 83.8,
+        "grade": "A"
+    },
+    {
+        "roll_no": "2604",
+        "name": "Nancy",
+        "marks": {
+            "Mathematics": 80.0,
+            "Physics": 70.0,
+            "Chemistry": 98.0,
+            "English": 80.0,
+            "Computer Science": 70.0
+        },
+        "total": 398.0,
+        "percentage": 79.6,
+        "grade": "B"
+    },
+    {
+        "roll_no": "2605",
+        "name": "Lucas",
+        "marks": {
+            "Mathematics": 45.0,
+            "Physics": 33.0,
+            "Chemistry": 23.0,
+            "English": 17.0,
+            "Computer Science": 8.0
+        },
+        "total": 126.0,
+        "percentage": 25.2,
+        "grade": "Fail"
+    },
+    {
+        "roll_no": "2606",
+        "name": "Erica",
+        "class": "5",
+        "section": "A",
+        "marks": {
+            "Mathematics": 95.0,
+            "Physics": 65.0,
+            "Chemistry": 55.0,
+            "English": 74.0,
+            "Computer Science": 55.0
+        },
+        "total": 344.0,
+        "percentage": 68.8,
+        "grade": "C"
+    }
+]
