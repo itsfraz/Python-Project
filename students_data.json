@@ -11,7 +11,9 @@
         },
         "total": 394.0,
         "percentage": 78.8,
-        "grade": "B"
+        "grade": "B",
+        "class": "10",
+        "section": "A"
     },
     {
         "roll_no": "2602",
@@ -25,7 +27,9 @@
         },
         "total": 369.0,
         "percentage": 73.8,
-        "grade": "B"
+        "grade": "B",
+        "class": "10",
+        "section": "B"
     },
     {
         "roll_no": "2603",
@@ -39,7 +43,9 @@
         },
         "total": 419.0,
         "percentage": 83.8,
-        "grade": "A"
+        "grade": "A",
+        "class": "8",
+        "section": "B"
     },
     {
         "roll_no": "2604",
@@ -53,21 +59,9 @@
         },
         "total": 398.0,
         "percentage": 79.6,
-        "grade": "B"
-    },
-    {
-        "roll_no": "2605",
-        "name": "Lucas",
-        "marks": {
-            "Mathematics": 45.0,
-            "Physics": 33.0,
-            "Chemistry": 23.0,
-            "English": 17.0,
-            "Computer Science": 8.0
-        },
-        "total": 126.0,
-        "percentage": 25.2,
-        "grade": "Fail"
+        "grade": "B",
+        "class": "10",
+        "section": "A"
     },
     {
         "roll_no": "2606",

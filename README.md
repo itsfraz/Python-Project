@@ -17,20 +17,25 @@ A menu-driven, professional, beginner-friendly Python application built for mana
 ## 🛠️ How to Run
 
 ### Option 1: CLI Version (Console)
+
 1. Open a terminal/command prompt in the project folder.
 2. Run the command:
+
    ```bash
    python student_result_system.py
    ```
 
 ### Option 2: GUI Version (Graphical Interface)
+
 1. Open a terminal/command prompt.
 2. Run the command:
+
    ```bash
    python student_result_system_gui.py
    ```
 
 **Login Details (for both):**
+
 - **Username**: `admin`
 - **Password**: `password123`
 

@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
 import os
-import csv
+
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
@@ -12,6 +12,9 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from collections import Counter
+from student_db import DatabaseManager
+import threading
+import time
 
 # ==========================================
 # 🎓 Smart Student Result Management System (Modern GUI)
@@ -19,7 +22,6 @@ from collections import Counter
 # Author: Senior Python Engineer
 # Description: A Modern, Sidebar-based GUI application for managing student results, including Analytics.
 
-DATA_FILE = "students_data.json"
 ADMIN_CREDENTIALS = {"admin": "password123"}
 
 # 🎨 Modern Color Palette
@@ -42,7 +44,10 @@ class ModernApp:
         self.root.geometry("1100x700")
         self.root.configure(bg=COLORS["content_bg"])
 
-        # Global Data Variable
+        # Database Init
+        self.db = DatabaseManager()
+
+        # Global Data Variable (Cache for Display)
         self.students = []
         self.load_data()
 
@@ -76,32 +81,30 @@ class ModernApp:
         style.configure("Modern.TEntry", padding=10, relief="flat", borderwidth=0)
 
     def load_data(self):
-        """Loads data from JSON file."""
-        if os.path.exists(DATA_FILE):
-            try:
-                with open(DATA_FILE, 'r') as f:
-                    self.students = json.load(f)
-            except:
-                self.students = []
-        else:
-            self.students = []
+        """Loads data from Database."""
+        self.students = self.db.get_all_students()
 
     def save_data(self):
-        """Saves data to JSON file."""
-        try:
-            with open(DATA_FILE, 'w') as f:
-                json.dump(self.students, f, indent=4)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save data: {e}")
+        """Refreshes local cache from DB."""
+        self.load_data()
 
     # ================= HELPER WIDGETS =================
     def create_btn(self, parent, text, command, bg=COLORS["accent"], fg="white", width=15):
         """Creates a modern flat button."""
         btn = tk.Button(parent, text=text, command=command, 
-                        bg=bg, fg=fg, 
-                        font=("Segoe UI", 10, "bold"),
-                        relief="flat", activebackground=COLORS["sidebar_active"], 
-                        activeforeground="white", width=width, pady=5, cursor="hand2")
+                        bg=bg, fg=fg, activebackground=bg, activeforeground=fg,
+                        font=("Segoe UI", 10, "bold"), relief="flat", bd=0, width=width, cursor="hand2")
+        
+        # Hover animation
+        def on_enter(e): btn['bg'] = "#34495E" if bg == COLORS["sidebar_bg"] else "#16A085"
+        def on_leave(e): btn['bg'] = bg
+        
+        # Danger/Red buttons hover slightly differently if desired, but general logic stands
+        if bg == COLORS["danger"]:
+             def on_enter(e): btn['bg'] = "#C0392B"
+        
+        btn.bind("<Enter>", on_enter)
+        btn.bind("<Leave>", on_leave)
         return btn
 
     def create_card(self, parent):
@@ -269,7 +272,7 @@ class ModernApp:
             messagebox.showwarning("Validation", "All fields (Roll, Name, Class, Section) are required!")
             return
 
-        if any(s['roll_no'] == roll for s in self.students):
+        if self.db.get_student(roll):
             messagebox.showerror("Duplicate", "Student with this Roll Number already exists!")
             return
 
@@ -294,9 +297,12 @@ class ModernApp:
             "marks": marks, "total": total, "percentage": round(percentage, 2), "grade": grade
         }
 
-        self.students.append(new_student)
-        self.save_data()
-        messagebox.showinfo("Success", f"Student {name} added successfully!")
+        if self.db.add_student(new_student):
+            self.load_data() # Refresh cache
+            messagebox.showinfo("Success", f"Student {name} added successfully!")
+            self.clear_inputs()
+        else:
+            messagebox.showerror("Error", "Failed to add student. Possible duplicate Roll No.")
         self.clear_inputs()
 
     def calculate_grade(self, percentage):
@@ -335,8 +341,17 @@ class ModernApp:
         self.class_filter.bind("<<ComboboxSelected>>", lambda e: self.refresh_table())
         
         self.create_btn(toolbar, "🗑️ Delete Selected", self.delete_selected, bg=COLORS["danger"], width=15).pack(side="left", padx=(0, 10))
+        self.create_btn(toolbar, "✏️ Edit", self.edit_student, bg="#F39C12", width=10).pack(side="left", padx=(0, 10))
         self.create_btn(toolbar, "📄 Result Card", self.generate_pdf_report, bg="#8E44AD", width=15).pack(side="left") 
-        self.create_btn(toolbar, "📥 Import CSV", self.import_csv_data, bg="#D35400", width=15).pack(side="right", padx=(0, 10))
+        
+        # Search Bar
+        search_frame = tk.Frame(toolbar, bg="white")
+        search_frame.pack(side="right", padx=(10, 0))
+        tk.Label(search_frame, text="🔍 Search:", bg="white", font=("Segoe UI", 10)).pack(side="left")
+        self.search_var = tk.StringVar()
+        self.search_var.trace("w", lambda name, index, mode: self.refresh_table())
+        tk.Entry(search_frame, textvariable=self.search_var, font=("Segoe UI", 10), width=15).pack(side="left", padx=5) 
+
         self.create_btn(toolbar, "📊 PDF Report", self.export_pdf_list, bg="#27AE60", width=15).pack(side="right", padx=(0, 10))
 
         # Table Frame
@@ -364,15 +379,30 @@ class ModernApp:
 
         # Column Config
         self.tree.column("Roll No", width=80, anchor="center")
-        self.tree.column("Name", width=180, anchor="w")
-        self.tree.column("Class", width=80, anchor="center")
-        self.tree.column("Section", width=60, anchor="center")
-        self.tree.column("Total", width=80, anchor="center")
-        self.tree.column("%", width=80, anchor="center")
         self.tree.column("Grade", width=60, anchor="center")
+        
+        # Sort Bindings
+        for col in cols:
+             self.tree.heading(col, text=col, command=lambda c=col: self.sort_column(c, False))
 
         # Load Data
         self.refresh_table()
+
+    def sort_column(self, col, reverse):
+        l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
+        
+        # Try to sort numerically if possible
+        try:
+             l.sort(key=lambda t: float(t[0]), reverse=reverse)
+        except ValueError:
+             l.sort(reverse=reverse)
+
+        # Rearrange items in sorted positions
+        for index, (val, k) in enumerate(l):
+            self.tree.move(k, '', index)
+
+        # Reverse sort next time
+        self.tree.heading(col, command=lambda: self.sort_column(col, not reverse))
 
     def refresh_table(self):
         # Update Filter Values
@@ -381,13 +411,26 @@ class ModernApp:
         self.class_filter['values'] = ["All Classes"] + classes
         if current_filter not in self.class_filter['values']:
              self.class_filter.current(0)
+        
+        # Search Query
+        query = self.search_var.get().lower() if hasattr(self, 'search_var') else ""
 
         # Filter Data
         selected_class = self.class_filter.get()
-        if selected_class == "All Classes" or not selected_class:
-            filtered_data = self.students
-        else:
-            filtered_data = [s for s in self.students if s.get('class', 'N/A') == selected_class]
+        filtered_data = []
+        
+        for s in self.students:
+             # Class Filter
+             if selected_class != "All Classes" and s.get('class', 'N/A') != selected_class:
+                  continue
+             
+             # Search Filter
+             if query:
+                  if (query not in s['name'].lower() and 
+                      query not in str(s['roll_no']).lower()):
+                       continue
+             
+             filtered_data.append(s)
 
         for row in self.tree.get_children():
             self.tree.delete(row)
@@ -407,11 +450,107 @@ class ModernApp:
         if messagebox.askyesno("Confirm", "Delete selected record(s)?"):
             for item in selected:
                 val = self.tree.item(item, "values")
-                self.students = [s for s in self.students if s['roll_no'] != str(val[0])]
-            self.save_data()
+                roll_to_delete = str(val[0])
+                self.db.delete_student(roll_to_delete)
+            
+            self.load_data()
             self.refresh_table()
 
-    # ================= VIEW: ANALYTICS =================
+    def edit_student(self):
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Select a student to edit")
+            return
+        
+        item = self.tree.item(selected[0])
+        roll = str(item['values'][0])
+        
+        student = next((s for s in self.students if s['roll_no'] == roll), None)
+        if not student: return
+
+        # Edit Modal
+        edit_win = tk.Toplevel(self.root)
+        edit_win.title(f"Edit Student - {roll}")
+        edit_win.geometry("500x600")
+        edit_win.configure(bg="white")
+        
+        tk.Label(edit_win, text="Edit Student Details", font=("Segoe UI", 16, "bold"), bg="white", fg=COLORS["text_dark"]).pack(pady=20)
+
+        # Form Frame
+        form = tk.Frame(edit_win, bg="white")
+        form.pack(padx=30, fill="x")
+
+        # Fields
+        tk.Label(form, text="Name:", font=("Segoe UI", 10), bg="white").pack(anchor="w")
+        e_name = tk.Entry(form, font=("Segoe UI", 11), bg="#F9F9F9", relief="flat")
+        e_name.pack(fill="x", pady=(0, 10))
+        e_name.insert(0, student['name'])
+
+        tk.Label(form, text="Class:", font=("Segoe UI", 10), bg="white").pack(anchor="w")
+        e_class = tk.Entry(form, font=("Segoe UI", 11), bg="#F9F9F9", relief="flat")
+        e_class.pack(fill="x", pady=(0, 10))
+        e_class.insert(0, student.get('class', ''))
+
+        tk.Label(form, text="Section:", font=("Segoe UI", 10), bg="white").pack(anchor="w")
+        e_section = tk.Entry(form, font=("Segoe UI", 11), bg="#F9F9F9", relief="flat")
+        e_section.pack(fill="x", pady=(0, 10))
+        e_section.insert(0, student.get('section', ''))
+        
+        # Marks
+        tk.Label(form, text="Marks:", font=("Segoe UI", 12, "bold"), bg="white", fg=COLORS["accent"]).pack(anchor="w", pady=(10, 5))
+        
+        mark_entries = {}
+        # Ensure we use standard subjects. If student has extra/diff subjects, they might be lost if we only save standard ones. 
+        # But for this system, standardization is likely preferred.
+        standard_subjects = ["Mathematics", "Physics", "Chemistry", "English", "Computer Science"]
+        
+        for sub in standard_subjects:
+            score = student['marks'].get(sub, 0)
+            frame = tk.Frame(form, bg="white")
+            frame.pack(fill="x", pady=2)
+            tk.Label(frame, text=sub, width=20, anchor="w", bg="white").pack(side="left")
+            e_mark = tk.Entry(frame, width=10, bg="#F9F9F9", relief="flat")
+            e_mark.pack(side="right")
+            e_mark.insert(0, str(score))
+            mark_entries[sub] = e_mark
+
+        def save_changes():
+            new_name = e_name.get().strip()
+            new_class = e_class.get().strip()
+            new_sec = e_section.get().strip()
+            
+            if not new_name or not new_class or not new_sec:
+                messagebox.showwarning("Validation", "All fields are required!")
+                return
+            
+            new_marks = {}
+            new_total = 0
+            try:
+                for sub, entry in mark_entries.items():
+                    m = float(entry.get())
+                    if not (0 <= m <= 100): raise ValueError
+                    new_marks[sub] = m
+                    new_total += m
+            except ValueError:
+                messagebox.showerror("Error", "Invalid marks! Must be 0-100.")
+                return
+
+            # Update Data
+            student['name'] = new_name
+            student['class'] = new_class
+            student['section'] = new_sec
+            student['marks'] = new_marks
+            student['total'] = new_total
+            student['percentage'] = round((new_total / 500) * 100, 2)
+            student['grade'] = self.calculate_grade(student['percentage'])
+            
+            self.db.update_student(student['roll_no'], student)
+            self.load_data()
+            self.refresh_table()
+            messagebox.showinfo("Success", "Student updated successfully!")
+            edit_win.destroy()
+
+        self.create_btn(edit_win, "💾 Update", save_changes, width=20).pack(pady=30)
     def show_analytics(self):
         self.set_active_view("Class Analytics")
         
@@ -490,14 +629,16 @@ class ModernApp:
         # Close previous figures to avoid memory leak
         plt.close('all')
 
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5), dpi=100)
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 4), dpi=100)
         fig.patch.set_facecolor(COLORS["content_bg"])
+        plt.subplots_adjust(wspace=0.3)
 
-        # Bar Chart
+        # 1. Grade Distribution (Bar Chart) - ax1
         color_map = ["#2ECC71", "#27AE60", "#F1C40F", "#E67E22", "#E74C3C", "#C0392B"]
         bars = ax1.bar(grade_order, counts, color=color_map)
-        ax1.set_title("Grade Distribution", fontsize=12, fontweight='bold')
+        ax1.set_title("Grade Distribution", fontsize=10, fontweight='bold')
         ax1.set_facecolor("#F9F9F9")
+        ax1.tick_params(labelsize=8)
         ax1.spines['top'].set_visible(False)
         ax1.spines['right'].set_visible(False)
         
@@ -506,13 +647,35 @@ class ModernApp:
             if height > 0:
                 ax1.text(bar.get_x() + bar.get_width()/2., height,
                          f'{int(height)}',
-                         ha='center', va='bottom')
+                         ha='center', va='bottom', fontsize=8)
 
-        # 2. Pass vs Fail (Pie Chart)
+        # 2. Pass vs Fail (Pie Chart) - ax2
         if total_students > 0:
             ax2.pie([passed, failed], labels=['Passed', 'Failed'], autopct='%1.1f%%', 
-                    colors=['#2ECC71', '#E74C3C'], startangle=90, explode=(0.1, 0), shadow=True)
-            ax2.set_title("Pass vs Fail Ratio", fontsize=12, fontweight='bold')
+                    colors=['#2ECC71', '#E74C3C'], startangle=90, explode=(0.1, 0), shadow=True, textprops={'fontsize': 8})
+            ax2.set_title("Pass vs Fail Ratio", fontsize=10, fontweight='bold')
+
+        # 3. Subject Performance (Avg Marks) - ax3
+        subjects = ["Mathematics", "Physics", "Chemistry", "English", "Computer Science"]
+        subj_avgs = []
+        for sub in subjects:
+            total_marks = sum(s['marks'].get(sub, 0) for s in data)
+            avg = total_marks / total_students if total_students > 0 else 0
+            subj_avgs.append(avg)
+
+        # Horizontal Bar for Subjects so labels match
+        y_pos = range(len(subjects))
+        ax3.barh(y_pos, subj_avgs, color="#3498DB")
+        ax3.set_yticks(y_pos)
+        ax3.set_yticklabels(subjects, fontsize=8)
+        ax3.set_title("Avg Subject Performance", fontsize=10, fontweight='bold')
+        ax3.set_xlim(0, 100)
+        ax3.spines['top'].set_visible(False)
+        ax3.spines['right'].set_visible(False)
+        
+        for i, v in enumerate(subj_avgs):
+            ax3.text(v + 1, i, f"{v:.1f}", va='center', fontsize=8)
+
 
         canvas = FigureCanvasTkAgg(fig, master=chart_frame)
         canvas.draw()
@@ -532,111 +695,6 @@ class ModernApp:
         
         return card
 
-    def import_csv_data(self):
-        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        if not file_path: return
-
-        success_count = 0
-        skip_count = 0
-
-        try:
-            with open(file_path, 'r', newline='') as f:
-                reader = csv.DictReader(f)
-                
-                # Check for empty file or wrong format
-                if not reader.fieldnames:
-                    messagebox.showerror("Error", "CSV file is empty or invalid.")
-                    return
-
-                for row in reader:
-                    # Clean up keys (strip whitespace)
-                    row = {k.strip(): v.strip() for k, v in row.items() if k}
-                    
-                    try:
-                        roll = row.get("Roll No")
-                        name = row.get("Name")
-                        
-                        if not roll or not name:
-                            skip_count += 1
-                            continue
-
-                        # Check Duplicate
-                        if any(s['roll_no'] == roll for s in self.students):
-                            skip_count += 1
-                            continue
-                        
-                        # Parse Marks
-                        marks = {}
-                        total = 0
-                        
-                        # Flexible Subject Mapping
-                        subjects_map = {
-                            "Mathematics": ["Mathematics", "Maths", "Math", "MATH", "MATHEMATICS"],
-                            "Physics": ["Physics", "Phy", "PHY", "PHYSICS"],
-                            "Chemistry": ["Chemistry", "Chem", "CHEM", "CHEMISTRY"],
-                            "English": ["English", "Eng", "ENG", "ENGLISH"],
-                            "Computer Science": ["Computer Science", "CS", "Comp Sci", "COMPUTER SCIENCE"]
-                        }
-                        
-                        valid_marks = True
-                        for internal_sub, aliases in subjects_map.items():
-                            found = False
-                            # Try direct match first (case-sensitive from CSV headers but mapped here)
-                            # Actually, let's just loop aliases.
-                            for alias in aliases:
-                                if alias in row:
-                                    m = float(row[alias])
-                                    if 0 <= m <= 100:
-                                        marks[internal_sub] = m
-                                        total += m
-                                        found = True
-                                        break
-                            
-                            if not found:
-                                # Try case-insensitive matching for keys in row
-                                row_lower = {k.lower(): v for k, v in row.items()}
-                                for alias in aliases:
-                                    if alias.lower() in row_lower:
-                                        m = float(row_lower[alias.lower()])
-                                        if 0 <= m <= 100:
-                                            marks[internal_sub] = m
-                                            total += m
-                                            found = True
-                                            break
-
-                            if not found:
-                                valid_marks = False
-                                break # Missing a subject
-                        
-                        if not valid_marks:
-                            skip_count += 1
-                            continue
-                        
-                        # Get Class/Section (Optional in CSV)
-                        student_class = row.get("Class", "Unassigned")
-                        section = row.get("Section", "Unassigned")
-
-                        percentage = (total / 500) * 100
-                        grade = self.calculate_grade(percentage)
-
-                        new_student = {
-                            "roll_no": roll, "name": name, "class": student_class, "section": section,
-                            "marks": marks,
-                            "total": total, "percentage": round(percentage, 2), "grade": grade
-                        }
-                        self.students.append(new_student)
-                        success_count += 1
-
-                    except ValueError:
-                        skip_count += 1
-                        continue
-
-            self.save_data()
-            self.refresh_table()
-            messagebox.showinfo("Import Summary", f"✅ Successfully Imported: {success_count}\n❌ Skipped (Duplicate/Invalid): {skip_count}")
-
-        except Exception as e:
-            messagebox.showerror("Import Error", f"Failed to read CSV: {e}\nStructure: Roll No, Name, Mathematics, Physics, Chemistry, English, Computer Science")
 
     def export_pdf_list(self):
         if not self.students:
@@ -667,54 +725,69 @@ class ModernApp:
         )
         if not file_path: return
 
-        try:
-            c = canvas.Canvas(file_path, pagesize=A4)
-            width, height = A4
-            
-            # Header
-            c.setFont("Helvetica-Bold", 18)
-            c.drawCentredString(width/2, height-50, report_title)
-            c.setFont("Helvetica", 12)
-            c.drawCentredString(width/2, height-70, f"Generated on: {datetime.now().strftime('%d-%b-%Y %H:%M')}")
-            
-            # Table Header
-            data = [['Roll No', 'Name', 'Class', 'Sec', 'Total', '%', 'Grd']]
-            
-            # Table Data
-            for s in data_to_export:
-                data.append([
-                    s['roll_no'], 
-                    s['name'], 
-                    s.get('class', '-'),
-                    s.get('section', '-'),
-                    str(s['total']), 
-                    f"{s['percentage']}%", 
-                    s['grade']
+        # Threading for PDF Export to prevent freeze
+        def run_export():
+            self.root.config(cursor="wait")
+            try:
+                c = canvas.Canvas(file_path, pagesize=A4)
+                width, height = A4
+                
+                # Header
+                c.setFont("Helvetica-Bold", 18)
+                c.drawCentredString(width/2, height-50, report_title)
+                c.setFont("Helvetica", 12)
+                c.drawCentredString(width/2, height-70, f"Generated on: {datetime.now().strftime('%d-%b-%Y %H:%M')}")
+                
+                # Table Header
+                data = [['Roll No', 'Name', 'Class', 'Sec', 'Total', '%', 'Grd']]
+                
+                # Table Data
+                for s in data_to_export:
+                    data.append([
+                        s['roll_no'], 
+                        s['name'], 
+                        s.get('class', '-'),
+                        s.get('section', '-'),
+                        str(s['total']), 
+                        f"{s['percentage']}%", 
+                        s['grade']
+                    ])
+
+                # Styling
+                table = Table(data, colWidths=[60, 160, 60, 40, 60, 60, 50])
+                style = TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
+                    ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                    ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                    ('BOTTOMPADDING', (0,0), (-1,0), 12),
+                    ('BACKGROUND', (0,1), (-1,-1), colors.whitesmoke),
+                    ('GRID', (0,0), (-1,-1), 1, colors.black),
+                ])
+                table.setStyle(style)
+                
+                # Draw
+                table.wrapOn(c, width, height)
+                table.drawOn(c, (width-500)/2, height-150)
+                
+                c.save()
+                
+                # Simulate heavy task
+                time.sleep(0.5) 
+                
+                self.root.after(0, lambda: [
+                    self.root.config(cursor=""),
+                    messagebox.showinfo("Success", f"Full Report saved successfully at:\n{file_path}"),
+                    os.startfile(file_path)
+                ])
+                
+            except Exception as e:
+                self.root.after(0, lambda: [
+                    self.root.config(cursor=""),
+                    messagebox.showerror("Export Error", f"Failed to export PDF: {e}")
                 ])
 
-            # Styling
-            table = Table(data, colWidths=[60, 160, 60, 40, 60, 60, 50])
-            style = TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0,0), (-1,0), 12),
-                ('BACKGROUND', (0,1), (-1,-1), colors.whitesmoke),
-                ('GRID', (0,0), (-1,-1), 1, colors.black),
-            ])
-            table.setStyle(style)
-            
-            # Draw
-            table.wrapOn(c, width, height)
-            table.drawOn(c, (width-500)/2, height-150)
-            
-            c.save()
-            messagebox.showinfo("Success", f"Full Report saved successfully at:\n{file_path}")
-            os.startfile(file_path)
-            
-        except Exception as e:
-            messagebox.showerror("Export Error", f"Failed to export PDF: {e}")
+        threading.Thread(target=run_export, daemon=True).start()
 
     # ================= PDF GENERATION =================
     def generate_pdf_report(self):
@@ -738,12 +811,24 @@ class ModernApp:
         )
         if not file_path: return
 
-        try:
-            self.create_realistic_result(file_path, student)
-            messagebox.showinfo("Success", f"Result Card generated successfully!\nSaved at: {file_path}")
-            os.startfile(file_path) # Auto-open file
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to generate PDF: {e}")
+        # Async Generation
+        def run_generate():
+            self.root.config(cursor="wait")
+            try:
+                self.create_realistic_result(file_path, student)
+                time.sleep(0.5) # Simulate processing
+                self.root.after(0, lambda: [
+                    self.root.config(cursor=""),
+                    messagebox.showinfo("Success", f"Result Card generated successfully!\nSaved at: {file_path}"),
+                    os.startfile(file_path)
+                ])
+            except Exception as e:
+                self.root.after(0, lambda: [
+                    self.root.config(cursor=""),
+                    messagebox.showerror("Error", f"Failed to generate PDF: {e}")
+                ])
+
+        threading.Thread(target=run_generate, daemon=True).start()
 
     def create_realistic_result(self, file_path, student):
         c = canvas.Canvas(file_path, pagesize=A4)
