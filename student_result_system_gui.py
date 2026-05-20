@@ -24,8 +24,8 @@ import time
 
 ADMIN_CREDENTIALS = {"admin": "password123"}
 
-# 🎨 Modern Color Palette
-COLORS = {
+# 🎨 Modern Color Palettes
+LIGHT_COLORS = {
     "sidebar_bg": "#2C3E50",     # Dark Blue/Grey
     "sidebar_active": "#34495E", # Lighter Blue/Grey
     "content_bg": "#ECF0F1",     # Light Grey
@@ -37,11 +37,220 @@ COLORS = {
     "border": "#BDC3C7"          # Light Border
 }
 
+DARK_COLORS = {
+    "sidebar_bg": "#1a1a2e",     # Dark Sidebar
+    "sidebar_active": "#242442", # Lighter Sidebar
+    "content_bg": "#16213e",     # Dark Content Background
+    "card_bg": "#0f3460",        # Dark Card Background
+    "accent": "#1ABC9C",         # Teal
+    "danger": "#E74C3C",         # Red
+    "text_dark": "#ECF0F1",      # Light text for dark backgrounds
+    "text_light": "#ECF0F1",     # Light text
+    "border": "#1a1a2e"          # Dark Border
+}
+
+COLORS = dict(LIGHT_COLORS)
+
+class Toast(tk.Canvas):
+    def __init__(self, parent, manager, message, toast_type="success"):
+        self.parent = parent
+        self.manager = manager
+        self.message = message
+        self.toast_type = toast_type
+        self.width = 280
+        self.height = 60
+        self.radius = 10
+        self.border_width = 6
+        
+        # Determine initial x-position (off-screen right)
+        win_width = self.parent.winfo_width()
+        if win_width <= 1:
+            win_width = 1100
+            
+        self.x = win_width
+        self.y = 20
+        self.target_x = win_width - 300
+        self.target_y = 20
+        
+        # Border colors
+        border_colors = {
+            "success": "#2ECC71",
+            "warning": "#F39C12",
+            "error": "#E74C3C"
+        }
+        self.border_color = border_colors.get(toast_type, "#2ECC71")
+        
+        # Initialize Canvas
+        parent_bg = parent.cget("bg")
+        super().__init__(parent, width=self.width, height=self.height, bg=parent_bg, highlightthickness=0)
+        
+        self.border_items = []
+        self.body_items = []
+        
+        self.draw_toast_shapes()
+        
+        # Label for the toast message
+        self.label = tk.Label(self, text=message, fg="white", bg="#2C3E50", font=("Segoe UI", 9, "bold"),
+                             wraplength=220, justify="left", anchor="w")
+        self.create_window(15 + self.border_width, self.height / 2, window=self.label, anchor="w", width=220)
+        
+        # Click to dismiss
+        self.bind("<Button-1>", lambda e: self.start_dismiss())
+        self.label.bind("<Button-1>", lambda e: self.start_dismiss())
+        
+        # Start slide-in
+        self.slide_in()
+        
+        # Schedule auto-dismiss
+        self.dismiss_job = self.parent.after(3000, self.start_dismiss)
+
+      # Make indent clean
+    def draw_toast_shapes(self):
+        # Clear existing
+        self.delete("all")
+        self.border_items.clear()
+        self.body_items.clear()
+        
+        # Left border arcs/rects
+        a1 = self.create_arc(0, 0, 2*self.radius, 2*self.radius, start=90, extent=90, fill=self.border_color, outline="")
+        a2 = self.create_arc(0, self.height-2*self.radius, 2*self.radius, self.height, start=180, extent=90, fill=self.border_color, outline="")
+        r1 = self.create_rectangle(0, self.radius, self.border_width, self.height-self.radius, fill=self.border_color, outline="")
+        self.border_items.extend([a1, a2, r1])
+        
+        # Main body (bg: #2C3E50)
+        a3 = self.create_arc(self.width-2*self.radius, 0, self.width, 2*self.radius, start=0, extent=90, fill="#2C3E50", outline="")
+        a4 = self.create_arc(self.width-2*self.radius, self.height-2*self.radius, self.width, self.height, start=270, extent=90, fill="#2C3E50", outline="")
+        r2 = self.create_rectangle(self.border_width, 0, self.width-self.radius, self.height, fill="#2C3E50", outline="")
+        r3 = self.create_rectangle(self.width-self.radius, self.radius, self.width, self.height-self.radius, fill="#2C3E50", outline="")
+        self.body_items.extend([a3, a4, r2, r3])
+
+    def blend_colors(self, color_hex1, color_hex2, fraction):
+        try:
+            c1 = color_hex1.lstrip('#')
+            c2 = color_hex2.lstrip('#')
+            r1, g1, b1 = int(c1[0:2], 16), int(c1[2:4], 16), int(c1[4:6], 16)
+            r2, g2, b2 = int(c2[0:2], 16), int(c2[2:4], 16), int(c2[4:6], 16)
+            r = int(r1 + (r2 - r1) * fraction)
+            g = int(g1 + (g2 - g1) * fraction)
+            b = int(b1 + (b2 - b1) * fraction)
+            return f"#{max(0, min(255, r)):02x}{max(0, min(255, g)):02x}{max(0, min(255, b)):02x}"
+        except Exception:
+            return color_hex1
+
+    def slide_in(self):
+        if not self.winfo_exists():
+            return
+        win_width = self.parent.winfo_width()
+        if win_width > 1:
+            self.target_x = win_width - 300
+            
+        diff = self.target_x - self.x
+        if abs(diff) < 1:
+            self.x = self.target_x
+            self.place(x=self.x, y=self.y)
+        else:
+            self.x += diff * 0.25
+            self.place(x=self.x, y=self.y)
+            self.parent.after(10, self.slide_in)
+
+    def animate_to_y(self, target_y):
+        self.target_y = target_y
+        self.slide_y_step()
+
+    def slide_y_step(self):
+        if not self.winfo_exists():
+            return
+        diff = self.target_y - self.y
+        if abs(diff) < 1:
+            self.y = self.target_y
+            self.place(x=self.x, y=self.y)
+        else:
+            self.y += diff * 0.2
+            self.place(x=self.x, y=self.y)
+            self.parent.after(10, self.slide_y_step)
+
+    def start_dismiss(self):
+        if hasattr(self, 'dismiss_job') and self.dismiss_job:
+            self.parent.after_cancel(self.dismiss_job)
+            self.dismiss_job = None
+        self.fade_step = 0
+        self.max_fade_steps = 15
+        self.fade_animation()
+
+    def fade_animation(self):
+        if not self.winfo_exists():
+            return
+        if self.fade_step >= self.max_fade_steps:
+            self.manager.remove_toast(self)
+            self.destroy()
+            return
+        
+        self.fade_step += 1
+        fraction = self.fade_step / self.max_fade_steps
+        
+        parent_bg = self.parent.cget("bg")
+        
+        current_bg = self.blend_colors("#2C3E50", parent_bg, fraction)
+        current_fg = self.blend_colors("#FFFFFF", parent_bg, fraction)
+        current_border = self.blend_colors(self.border_color, parent_bg, fraction)
+        
+        self.x += 6
+        self.place(x=self.x, y=self.y)
+        
+        self.configure(bg=parent_bg)
+        
+        for item in self.border_items:
+            self.itemconfig(item, fill=current_border)
+        for item in self.body_items:
+            self.itemconfig(item, fill=current_bg)
+            
+        if self.label.winfo_exists():
+            self.label.configure(bg=current_bg, fg=current_fg)
+            
+        self.parent.after(15, self.fade_animation)
+
+
+class ToastManager:
+    def __init__(self, root):
+        self.root = root
+        self.active_toasts = []
+        self.root.bind("<Configure>", self.on_window_configure, add="+")
+
+    def show(self, message, type="success"):
+        toast = Toast(self.root, self, message, type)
+        self.active_toasts.append(toast)
+        self.rearrange_toasts()
+        return toast
+
+    def remove_toast(self, toast):
+        if toast in self.active_toasts:
+            self.active_toasts.remove(toast)
+            self.rearrange_toasts()
+
+    def rearrange_toasts(self):
+        for index, toast in enumerate(self.active_toasts):
+            new_target_y = 20 + index * 70
+            toast.animate_to_y(new_target_y)
+
+    def on_window_configure(self, event):
+        if event.widget == self.root:
+            win_width = self.root.winfo_width()
+            for toast in self.active_toasts:
+                toast.target_x = win_width - 300
+
+
 class ModernApp:
     def __init__(self, root):
         self.root = root
         self.root.title("🎓 Smart Student System")
         self.root.geometry("1100x700")
+
+        # Initialize Toast Manager
+        self.toast = ToastManager(self.root)
+
+        # Load Theme Preference
+        self.load_theme()
+
         self.root.configure(bg=COLORS["content_bg"])
 
         # Database Init
@@ -57,25 +266,205 @@ class ModernApp:
         # Start with Login
         self.build_login_screen()
 
+    def load_theme(self):
+        """Loads the theme choice from theme.json or defaults to light."""
+        self.current_theme = "light"
+        if os.path.exists("theme.json"):
+            try:
+                with open("theme.json", "r") as f:
+                    data = json.load(f)
+                    self.current_theme = data.get("theme", "light")
+            except Exception:
+                pass
+        
+        # Apply initial theme palette
+        if self.current_theme == "dark":
+            COLORS.update(DARK_COLORS)
+        else:
+            COLORS.update(LIGHT_COLORS)
+
+    def save_theme(self):
+        """Saves current theme choice to theme.json."""
+        try:
+            with open("theme.json", "w") as f:
+                json.dump({"theme": self.current_theme}, f)
+        except Exception as e:
+            print(f"Error saving theme: {e}")
+
+    def toggle_theme(self):
+        """Toggles between light and dark theme and updates UI."""
+        if self.current_theme == "light":
+            self.current_theme = "dark"
+            COLORS.update(DARK_COLORS)
+        else:
+            self.current_theme = "light"
+            COLORS.update(LIGHT_COLORS)
+        
+        self.save_theme()
+        self.re_theme()
+
+        # Update toggle button text/icon
+        if hasattr(self, "theme_btn"):
+            theme_icon = "🌙" if self.current_theme == "light" else "☀"
+            theme_text = "Dark Mode" if self.current_theme == "light" else "Light Mode"
+            self.theme_btn.configure(text=f"{theme_icon}  {theme_text}")
+
+    def re_theme(self):
+        """Walks all widgets and updates background and foreground colors according to COLORS."""
+        # 1. Update root window background
+        if hasattr(self, "sidebar") and self.sidebar.winfo_exists():
+            self.root.configure(bg=COLORS["content_bg"])
+        else:
+            self.root.configure(bg=COLORS["sidebar_bg"])
+
+        # 2. Update ttk Styles (Treeview, Combobox, etc.)
+        self.setup_styles()
+
+        # 3. Recursively update all widgets
+        self.update_widget_colors(self.root)
+
+        # 4. If analytics dashboard is active, redraw the charts with new theme
+        if hasattr(self, "dashboard_frame") and self.dashboard_frame.winfo_exists():
+            self.update_analytics_dashboard()
+
+    def update_widget_colors(self, widget):
+        if isinstance(widget, Toast):
+            widget.configure(bg=COLORS["content_bg"])
+            widget.draw_toast_shapes()
+            return
+
+        widget_type = widget.winfo_class()
+        
+        # Determine target colors based on the widget type and role/current colors
+        try:
+            bg = widget.cget("bg")
+        except tk.TclError:
+            bg = None
+            
+        try:
+            fg = widget.cget("fg")
+        except tk.TclError:
+            fg = None
+
+        # Check for custom button properties
+        if hasattr(widget, "custom_bg"):
+            # It's a button created with create_btn
+            if widget.custom_bg == LIGHT_COLORS["accent"] or widget.custom_bg == DARK_COLORS["accent"]:
+                widget.custom_bg = COLORS["accent"]
+            elif widget.custom_bg == LIGHT_COLORS["sidebar_bg"] or widget.custom_bg == DARK_COLORS["sidebar_bg"]:
+                widget.custom_bg = COLORS["sidebar_bg"]
+            elif widget.custom_bg == LIGHT_COLORS["sidebar_active"] or widget.custom_bg == DARK_COLORS["sidebar_active"]:
+                widget.custom_bg = COLORS["sidebar_active"]
+            elif widget.custom_bg == LIGHT_COLORS["danger"] or widget.custom_bg == DARK_COLORS["danger"]:
+                widget.custom_bg = COLORS["danger"]
+            
+            widget.configure(bg=widget.custom_bg, activebackground=widget.custom_bg)
+            
+        elif hasattr(self, "nav_btns") and widget in self.nav_btns:
+            # Sidebar navigation button
+            bg_color = COLORS["sidebar_bg"]
+            # Logout button uses danger bg
+            try:
+                current_bg = widget.cget("bg")
+                if current_bg == LIGHT_COLORS["danger"] or current_bg == DARK_COLORS["danger"]:
+                    bg_color = COLORS["danger"]
+            except tk.TclError:
+                pass
+            widget.configure(bg=bg_color, activebackground=COLORS["sidebar_active"])
+            
+        elif widget_type in ("Frame", "Labelframe"):
+            # Update Frame background based on current color mapping
+            if bg in (LIGHT_COLORS["sidebar_bg"], DARK_COLORS["sidebar_bg"]):
+                widget.configure(bg=COLORS["sidebar_bg"])
+            elif bg in (LIGHT_COLORS["content_bg"], DARK_COLORS["content_bg"]):
+                widget.configure(bg=COLORS["content_bg"])
+            elif bg in ("white", "#FFFFFF", LIGHT_COLORS["card_bg"], DARK_COLORS["card_bg"]):
+                widget.configure(bg=COLORS["card_bg"])
+                
+        elif widget_type == "Label":
+            # Update Label background and foreground
+            if bg in (LIGHT_COLORS["sidebar_bg"], DARK_COLORS["sidebar_bg"]):
+                widget.configure(bg=COLORS["sidebar_bg"], fg="white")
+            elif bg in (LIGHT_COLORS["content_bg"], DARK_COLORS["content_bg"]):
+                widget.configure(bg=COLORS["content_bg"])
+                if fg in (LIGHT_COLORS["text_dark"], DARK_COLORS["text_dark"]):
+                    widget.configure(fg=COLORS["text_dark"])
+            elif bg in ("white", "#FFFFFF", LIGHT_COLORS["card_bg"], DARK_COLORS["card_bg"]):
+                widget.configure(bg=COLORS["card_bg"])
+                # Handle text colors inside cards
+                if fg in (LIGHT_COLORS["text_dark"], DARK_COLORS["text_dark"]):
+                    widget.configure(fg=COLORS["text_dark"])
+                elif fg in (LIGHT_COLORS["accent"], DARK_COLORS["accent"]):
+                    widget.configure(fg=COLORS["accent"])
+                elif fg in ("gray", "#BDC3C7"):
+                    widget.configure(fg="#BDC3C7" if self.current_theme == "dark" else "gray")
+            else:
+                # Label is not mapped, check if parent is sidebar
+                try:
+                    parent_bg = widget.master.cget("bg")
+                except (tk.TclError, AttributeError):
+                    parent_bg = None
+                if parent_bg == COLORS["sidebar_bg"]:
+                    widget.configure(bg=COLORS["sidebar_bg"], fg="white")
+                    
+        elif widget_type == "Entry":
+            # Update Entry backgrounds/foregrounds
+            if bg in ("#F9F9F9", "white", LIGHT_COLORS["content_bg"], DARK_COLORS["content_bg"]):
+                entry_bg = COLORS["content_bg"] if self.current_theme == "dark" else "#F9F9F9"
+                widget.configure(bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"])
+                
+        elif widget_type == "TCombobox":
+            # ttk Combobox can be styled via style.
+            pass
+
+        # Recursively walk children
+        for child in widget.winfo_children():
+            self.update_widget_colors(child)
+
     def setup_styles(self):
         """Configures ttk styles for a modern look."""
         style = ttk.Style()
         style.theme_use('clam') # Use 'clam' as base for better customization
 
         # Treeview (Table) Style
+        bg_color = "white" if self.current_theme == "light" else COLORS["card_bg"]
         style.configure("Treeview", 
-                        background="white",
+                        background=bg_color,
                         foreground=COLORS["text_dark"],
                         rowheight=30,
-                        fieldbackground="white",
+                        fieldbackground=bg_color,
                         font=("Segoe UI", 10))
         style.map('Treeview', background=[('selected', COLORS["accent"])])
         
         # Treeview Header
+        header_bg = "#BDC3C7" if self.current_theme == "light" else COLORS["sidebar_bg"]
+        header_fg = COLORS["text_dark"] if self.current_theme == "light" else COLORS["text_light"]
         style.configure("Treeview.Heading", 
-                        background=COLORS["secondary"] if "secondary" in COLORS else "#BDC3C7",
-                        foreground=COLORS["text_dark"],
+                        background=header_bg,
+                        foreground=header_fg,
                         font=("Segoe UI", 10, "bold"))
+        
+        # TCombobox Styling
+        style.configure("TCombobox",
+                        fieldbackground=bg_color,
+                        background=COLORS["content_bg"],
+                        foreground=COLORS["text_dark"])
+        style.map('TCombobox', 
+                  fieldbackground=[('readonly', bg_color)],
+                  foreground=[('readonly', COLORS["text_dark"])],
+                  background=[('readonly', COLORS["content_bg"])])
+        
+        # TScrollbar Styling
+        style.configure("Vertical.TScrollbar",
+                        gripcount=0,
+                        background=COLORS["sidebar_bg"],
+                        troughcolor=COLORS["content_bg"],
+                        bordercolor=COLORS["content_bg"],
+                        arrowcolor=COLORS["accent"],
+                        lightcolor=COLORS["content_bg"],
+                        darkcolor=COLORS["content_bg"])
+        style.map('Vertical.TScrollbar',
+                  background=[('pressed', COLORS["accent"]), ('active', COLORS["sidebar_active"])])
         
         # Entries
         style.configure("Modern.TEntry", padding=10, relief="flat", borderwidth=0)
@@ -89,19 +478,33 @@ class ModernApp:
         self.load_data()
 
     # ================= HELPER WIDGETS =================
-    def create_btn(self, parent, text, command, bg=COLORS["accent"], fg="white", width=15):
+    def create_btn(self, parent, text, command, bg=None, fg="white", width=15):
         """Creates a modern flat button."""
+        if bg is None:
+            bg = COLORS["accent"]
+
         btn = tk.Button(parent, text=text, command=command, 
                         bg=bg, fg=fg, activebackground=bg, activeforeground=fg,
                         font=("Segoe UI", 10, "bold"), relief="flat", bd=0, width=width, cursor="hand2")
         
-        # Hover animation
-        def on_enter(e): btn['bg'] = "#34495E" if bg == COLORS["sidebar_bg"] else "#16A085"
-        def on_leave(e): btn['bg'] = bg
+        # Store dynamic styles for theme updates
+        btn.custom_bg = bg
+        btn.custom_fg = fg
         
-        # Danger/Red buttons hover slightly differently if desired, but general logic stands
-        if bg == COLORS["danger"]:
-             def on_enter(e): btn['bg'] = "#C0392B"
+        # Hover animation using dynamic theme color lookup
+        def on_enter(e):
+            current_bg = btn.custom_bg
+            if current_bg == COLORS["sidebar_bg"]:
+                btn['bg'] = COLORS["sidebar_active"]
+            elif current_bg == COLORS["accent"]:
+                btn['bg'] = "#16A085"
+            elif current_bg == COLORS["danger"]:
+                btn['bg'] = "#C0392B"
+            else:
+                btn['bg'] = current_bg
+        
+        def on_leave(e):
+            btn['bg'] = btn.custom_bg
         
         btn.bind("<Enter>", on_enter)
         btn.bind("<Leave>", on_leave)
@@ -118,21 +521,24 @@ class ModernApp:
         self.clear_frame()
         self.root.configure(bg=COLORS["sidebar_bg"]) # Dark BG for Login
 
-        login_card = tk.Frame(self.root, bg="white", padx=40, pady=50, width=400)
+        login_card = tk.Frame(self.root, bg=COLORS["card_bg"], padx=40, pady=50, width=400)
         login_card.place(relx=0.5, rely=0.5, anchor="center")
         
         # Logo/Title
-        tk.Label(login_card, text="🎓", font=("Segoe UI", 50), bg="white", fg=COLORS["accent"]).pack()
-        tk.Label(login_card, text="Student System", font=("Segoe UI", 24, "bold"), bg="white", fg=COLORS["text_dark"]).pack(pady=(0, 20))
+        tk.Label(login_card, text="🎓", font=("Segoe UI", 50), bg=COLORS["card_bg"], fg=COLORS["accent"]).pack()
+        tk.Label(login_card, text="Student System", font=("Segoe UI", 24, "bold"), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).pack(pady=(0, 20))
 
         # Inputs
-        tk.Label(login_card, text="Username", font=("Segoe UI", 10, "bold"), bg="white", fg="gray").pack(anchor="w")
-        self.username_entry = tk.Entry(login_card, font=("Segoe UI", 12), relief="solid", bd=1, fg=COLORS["text_dark"])
+        fg_gray = "#BDC3C7" if self.current_theme == "dark" else "gray"
+        entry_bg = COLORS["content_bg"] if self.current_theme == "dark" else "white"
+
+        tk.Label(login_card, text="Username", font=("Segoe UI", 10, "bold"), bg=COLORS["card_bg"], fg=fg_gray).pack(anchor="w")
+        self.username_entry = tk.Entry(login_card, font=("Segoe UI", 12), bg=entry_bg, relief="solid", bd=1, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"])
         self.username_entry.pack(fill="x", pady=(5, 15), ipady=5)
         self.username_entry.insert(0, "admin")
 
-        tk.Label(login_card, text="Password", font=("Segoe UI", 10, "bold"), bg="white", fg="gray").pack(anchor="w")
-        self.password_entry = tk.Entry(login_card, font=("Segoe UI", 12), relief="solid", bd=1, show="•", fg=COLORS["text_dark"])
+        tk.Label(login_card, text="Password", font=("Segoe UI", 10, "bold"), bg=COLORS["card_bg"], fg=fg_gray).pack(anchor="w")
+        self.password_entry = tk.Entry(login_card, font=("Segoe UI", 12), bg=entry_bg, relief="solid", bd=1, show="•", fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"])
         self.password_entry.pack(fill="x", pady=(5, 20), ipady=5)
         self.password_entry.insert(0, "password123")
 
@@ -145,7 +551,7 @@ class ModernApp:
         if ADMIN_CREDENTIALS.get(user) == pwd:
             self.build_dashboard_layout()
         else:
-            messagebox.showerror("Login Failed", "❌ Invalid credentials")
+            self.toast.show("❌ Invalid username or password", type="error")
 
     # ================= MAIN DASHBOARD LAYOUT =================
     def clear_frame(self):
@@ -170,6 +576,11 @@ class ModernApp:
         self.add_sidebar_btn("📋  View Records", self.show_view_students)
         self.add_sidebar_btn("📊  Analytics", self.show_analytics)
         
+        # Theme Toggle
+        theme_icon = "🌙" if self.current_theme == "light" else "☀"
+        theme_text = "Dark Mode" if self.current_theme == "light" else "Light Mode"
+        self.theme_btn = self.add_sidebar_btn(f"{theme_icon}  {theme_text}", self.toggle_theme)
+
         # Spacer
         tk.Frame(self.sidebar, bg=COLORS["sidebar_bg"]).pack(fill="y", expand=True)
         
@@ -183,7 +594,9 @@ class ModernApp:
         # Default View
         self.show_add_student()
 
-    def add_sidebar_btn(self, text, command, bg=COLORS["sidebar_bg"]):
+    def add_sidebar_btn(self, text, command, bg=None):
+        if bg is None:
+            bg = COLORS["sidebar_bg"]
         btn = tk.Button(self.sidebar, text=text, font=("Segoe UI", 11), 
                         bg=bg, fg="white", activebackground=COLORS["sidebar_active"], activeforeground="white",
                         bd=0, cursor="hand2", anchor="w", padx=20, command=command)
@@ -209,27 +622,29 @@ class ModernApp:
         card.pack(fill="both", expand=True)
 
         # Form Grid
-        form_frame = tk.Frame(card, bg="white")
+        form_frame = tk.Frame(card, bg=COLORS["card_bg"])
         form_frame.pack(fill="x", pady=10)
 
+        entry_bg = COLORS["content_bg"] if self.current_theme == "dark" else "#F9F9F9"
+
         # Roll Number
-        tk.Label(form_frame, text="Roll Number", font=("Segoe UI", 10, "bold"), bg="white").grid(row=0, column=0, sticky="w", padx=10, pady=5)
-        self.ent_roll = tk.Entry(form_frame, bg="#F9F9F9", relief="flat", font=("Segoe UI", 11))
+        tk.Label(form_frame, text="Roll Number", font=("Segoe UI", 10, "bold"), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).grid(row=0, column=0, sticky="w", padx=10, pady=5)
+        self.ent_roll = tk.Entry(form_frame, bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat", font=("Segoe UI", 11))
         self.ent_roll.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 15), ipady=5)
 
         # Name
-        tk.Label(form_frame, text="Full Name", font=("Segoe UI", 10, "bold"), bg="white").grid(row=0, column=1, sticky="w", padx=10, pady=5)
-        self.ent_name = tk.Entry(form_frame, bg="#F9F9F9", relief="flat", font=("Segoe UI", 11))
+        tk.Label(form_frame, text="Full Name", font=("Segoe UI", 10, "bold"), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).grid(row=0, column=1, sticky="w", padx=10, pady=5)
+        self.ent_name = tk.Entry(form_frame, bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat", font=("Segoe UI", 11))
         self.ent_name.grid(row=1, column=1, sticky="ew", padx=10, pady=(0, 15), ipady=5)
 
         # Class
-        tk.Label(form_frame, text="Class", font=("Segoe UI", 10, "bold"), bg="white").grid(row=2, column=0, sticky="w", padx=10, pady=5)
-        self.ent_class = tk.Entry(form_frame, bg="#F9F9F9", relief="flat", font=("Segoe UI", 11))
+        tk.Label(form_frame, text="Class", font=("Segoe UI", 10, "bold"), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).grid(row=2, column=0, sticky="w", padx=10, pady=5)
+        self.ent_class = tk.Entry(form_frame, bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat", font=("Segoe UI", 11))
         self.ent_class.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 15), ipady=5)
 
         # Section
-        tk.Label(form_frame, text="Section", font=("Segoe UI", 10, "bold"), bg="white").grid(row=2, column=1, sticky="w", padx=10, pady=5)
-        self.ent_section = tk.Entry(form_frame, bg="#F9F9F9", relief="flat", font=("Segoe UI", 11))
+        tk.Label(form_frame, text="Section", font=("Segoe UI", 10, "bold"), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).grid(row=2, column=1, sticky="w", padx=10, pady=5)
+        self.ent_section = tk.Entry(form_frame, bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat", font=("Segoe UI", 11))
         self.ent_section.grid(row=3, column=1, sticky="ew", padx=10, pady=(0, 15), ipady=5)
 
         form_frame.columnconfigure(0, weight=1)
@@ -239,24 +654,24 @@ class ModernApp:
         ttk.Separator(card, orient="horizontal").pack(fill="x", pady=10)
 
         # Marks Section
-        tk.Label(card, text="Enter Marks (0-100)", font=("Segoe UI", 12, "bold"), bg="white", fg=COLORS["accent"]).pack(anchor="w", pady=10)
+        tk.Label(card, text="Enter Marks (0-100)", font=("Segoe UI", 12, "bold"), bg=COLORS["card_bg"], fg=COLORS["accent"]).pack(anchor="w", pady=10)
         
-        marks_frame = tk.Frame(card, bg="white")
+        marks_frame = tk.Frame(card, bg=COLORS["card_bg"])
         marks_frame.pack(fill="x")
 
         self.subjects = ["Mathematics", "Physics", "Chemistry", "English", "Computer Science"]
         self.mark_vars = {}
 
         for i, sub in enumerate(self.subjects):
-            lbl = tk.Label(marks_frame, text=sub, font=("Segoe UI", 10), bg="white")
+            lbl = tk.Label(marks_frame, text=sub, font=("Segoe UI", 10), bg=COLORS["card_bg"], fg=COLORS["text_dark"])
             lbl.grid(row=0, column=i, padx=5, sticky="w")
             
-            ent = tk.Entry(marks_frame, bg="#F9F9F9", relief="flat", font=("Segoe UI", 11), width=10, justify="center")
+            ent = tk.Entry(marks_frame, bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat", font=("Segoe UI", 11), width=10, justify="center")
             ent.grid(row=1, column=i, padx=5, pady=(5, 10), ipady=5)
             self.mark_vars[sub] = ent
 
         # Action Buttons
-        btn_frame = tk.Frame(card, bg="white")
+        btn_frame = tk.Frame(card, bg=COLORS["card_bg"])
         btn_frame.pack(pady=30, anchor="w")
         
         self.create_btn(btn_frame, "💾  SAVE RECORD", self.save_student).pack(side="left", padx=(0, 10))
@@ -269,11 +684,11 @@ class ModernApp:
         section = self.ent_section.get().strip()
 
         if not roll or not name or not student_class or not section:
-            messagebox.showwarning("Validation", "All fields (Roll, Name, Class, Section) are required!")
+            self.toast.show("All fields (Roll, Name, Class, Section) are required!", type="warning")
             return
 
         if self.db.get_student(roll):
-            messagebox.showerror("Duplicate", "Student with this Roll Number already exists!")
+            self.toast.show("Student with this Roll Number already exists!", type="error")
             return
 
         marks = {}
@@ -286,7 +701,7 @@ class ModernApp:
                 marks[sub] = m
                 total += m
         except ValueError:
-            messagebox.showerror("Error", "Please enter valid numeric marks (0-100).")
+            self.toast.show("Please enter valid numeric marks (0-100).", type="error")
             return
 
         percentage = (total / 500) * 100
@@ -299,10 +714,10 @@ class ModernApp:
 
         if self.db.add_student(new_student):
             self.load_data() # Refresh cache
-            messagebox.showinfo("Success", f"Student {name} added successfully!")
+            self.toast.show(f"Student {name} added successfully!", type="success")
             self.clear_inputs()
         else:
-            messagebox.showerror("Error", "Failed to add student. Possible duplicate Roll No.")
+            self.toast.show("Failed to add student. Possible duplicate Roll No.", type="error")
         self.clear_inputs()
 
     def calculate_grade(self, percentage):
@@ -329,13 +744,13 @@ class ModernApp:
         card.pack(fill="both", expand=True)
 
         # Toolbar
-        toolbar = tk.Frame(card, bg="white")
+        toolbar = tk.Frame(card, bg=COLORS["card_bg"])
         toolbar.pack(fill="x", pady=(0, 15))
 
         self.create_btn(toolbar, "🔄 Refresh", self.refresh_table, bg=COLORS["sidebar_active"], width=10).pack(side="left", padx=(0, 10))
         
         # Filter
-        tk.Label(toolbar, text="Filter by Class:", bg="white", font=("Segoe UI", 10)).pack(side="left", padx=(10, 5))
+        tk.Label(toolbar, text="Filter by Class:", bg=COLORS["card_bg"], fg=COLORS["text_dark"], font=("Segoe UI", 10)).pack(side="left", padx=(10, 5))
         self.class_filter = ttk.Combobox(toolbar, state="readonly", width=15)
         self.class_filter.pack(side="left", padx=(0, 10))
         self.class_filter.bind("<<ComboboxSelected>>", lambda e: self.refresh_table())
@@ -345,17 +760,19 @@ class ModernApp:
         self.create_btn(toolbar, "📄 Result Card", self.generate_pdf_report, bg="#8E44AD", width=15).pack(side="left") 
         
         # Search Bar
-        search_frame = tk.Frame(toolbar, bg="white")
+        search_frame = tk.Frame(toolbar, bg=COLORS["card_bg"])
         search_frame.pack(side="right", padx=(10, 0))
-        tk.Label(search_frame, text="🔍 Search:", bg="white", font=("Segoe UI", 10)).pack(side="left")
+        tk.Label(search_frame, text="🔍 Search:", bg=COLORS["card_bg"], fg=COLORS["text_dark"], font=("Segoe UI", 10)).pack(side="left")
         self.search_var = tk.StringVar()
         self.search_var.trace("w", lambda name, index, mode: self.refresh_table())
-        tk.Entry(search_frame, textvariable=self.search_var, font=("Segoe UI", 10), width=15).pack(side="left", padx=5) 
+        
+        entry_bg = COLORS["content_bg"] if self.current_theme == "dark" else "#F9F9F9"
+        tk.Entry(search_frame, textvariable=self.search_var, font=("Segoe UI", 10), bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], width=15).pack(side="left", padx=5) 
 
         self.create_btn(toolbar, "📊 PDF Report", self.export_pdf_list, bg="#27AE60", width=15).pack(side="right", padx=(0, 10))
 
         # Table Frame
-        table_frame = tk.Frame(card)
+        table_frame = tk.Frame(card, bg=COLORS["card_bg"])
         table_frame.pack(fill="both", expand=True)
 
         cols = ("Roll No", "Name", "Class", "Section", "Total", "%", "Grade")
@@ -444,7 +861,7 @@ class ModernApp:
     def delete_selected(self):
         selected = self.tree.selection()
         if not selected:
-            messagebox.showwarning("Warning", "Select a student to delete")
+            self.toast.show("Select a student to delete", type="warning")
             return
         
         if messagebox.askyesno("Confirm", "Delete selected record(s)?"):
@@ -459,7 +876,7 @@ class ModernApp:
     def edit_student(self):
         selected = self.tree.selection()
         if not selected:
-            messagebox.showwarning("Warning", "Select a student to edit")
+            self.toast.show("Select a student to edit", type="warning")
             return
         
         item = self.tree.item(selected[0])
@@ -472,44 +889,44 @@ class ModernApp:
         edit_win = tk.Toplevel(self.root)
         edit_win.title(f"Edit Student - {roll}")
         edit_win.geometry("500x600")
-        edit_win.configure(bg="white")
+        edit_win.configure(bg=COLORS["card_bg"])
         
-        tk.Label(edit_win, text="Edit Student Details", font=("Segoe UI", 16, "bold"), bg="white", fg=COLORS["text_dark"]).pack(pady=20)
+        tk.Label(edit_win, text="Edit Student Details", font=("Segoe UI", 16, "bold"), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).pack(pady=20)
 
         # Form Frame
-        form = tk.Frame(edit_win, bg="white")
+        form = tk.Frame(edit_win, bg=COLORS["card_bg"])
         form.pack(padx=30, fill="x")
 
+        entry_bg = COLORS["content_bg"] if self.current_theme == "dark" else "#F9F9F9"
+
         # Fields
-        tk.Label(form, text="Name:", font=("Segoe UI", 10), bg="white").pack(anchor="w")
-        e_name = tk.Entry(form, font=("Segoe UI", 11), bg="#F9F9F9", relief="flat")
+        tk.Label(form, text="Name:", font=("Segoe UI", 10), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).pack(anchor="w")
+        e_name = tk.Entry(form, font=("Segoe UI", 11), bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat")
         e_name.pack(fill="x", pady=(0, 10))
         e_name.insert(0, student['name'])
 
-        tk.Label(form, text="Class:", font=("Segoe UI", 10), bg="white").pack(anchor="w")
-        e_class = tk.Entry(form, font=("Segoe UI", 11), bg="#F9F9F9", relief="flat")
+        tk.Label(form, text="Class:", font=("Segoe UI", 10), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).pack(anchor="w")
+        e_class = tk.Entry(form, font=("Segoe UI", 11), bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat")
         e_class.pack(fill="x", pady=(0, 10))
         e_class.insert(0, student.get('class', ''))
 
-        tk.Label(form, text="Section:", font=("Segoe UI", 10), bg="white").pack(anchor="w")
-        e_section = tk.Entry(form, font=("Segoe UI", 11), bg="#F9F9F9", relief="flat")
+        tk.Label(form, text="Section:", font=("Segoe UI", 10), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).pack(anchor="w")
+        e_section = tk.Entry(form, font=("Segoe UI", 11), bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat")
         e_section.pack(fill="x", pady=(0, 10))
         e_section.insert(0, student.get('section', ''))
         
         # Marks
-        tk.Label(form, text="Marks:", font=("Segoe UI", 12, "bold"), bg="white", fg=COLORS["accent"]).pack(anchor="w", pady=(10, 5))
+        tk.Label(form, text="Marks:", font=("Segoe UI", 12, "bold"), bg=COLORS["card_bg"], fg=COLORS["accent"]).pack(anchor="w", pady=(10, 5))
         
         mark_entries = {}
-        # Ensure we use standard subjects. If student has extra/diff subjects, they might be lost if we only save standard ones. 
-        # But for this system, standardization is likely preferred.
         standard_subjects = ["Mathematics", "Physics", "Chemistry", "English", "Computer Science"]
         
         for sub in standard_subjects:
             score = student['marks'].get(sub, 0)
-            frame = tk.Frame(form, bg="white")
+            frame = tk.Frame(form, bg=COLORS["card_bg"])
             frame.pack(fill="x", pady=2)
-            tk.Label(frame, text=sub, width=20, anchor="w", bg="white").pack(side="left")
-            e_mark = tk.Entry(frame, width=10, bg="#F9F9F9", relief="flat")
+            tk.Label(frame, text=sub, width=20, anchor="w", bg=COLORS["card_bg"], fg=COLORS["text_dark"]).pack(side="left")
+            e_mark = tk.Entry(frame, width=10, bg=entry_bg, fg=COLORS["text_dark"], insertbackground=COLORS["text_dark"], relief="flat")
             e_mark.pack(side="right")
             e_mark.insert(0, str(score))
             mark_entries[sub] = e_mark
@@ -520,7 +937,7 @@ class ModernApp:
             new_sec = e_section.get().strip()
             
             if not new_name or not new_class or not new_sec:
-                messagebox.showwarning("Validation", "All fields are required!")
+                self.toast.show("All fields are required!", type="warning")
                 return
             
             new_marks = {}
@@ -532,7 +949,7 @@ class ModernApp:
                     new_marks[sub] = m
                     new_total += m
             except ValueError:
-                messagebox.showerror("Error", "Invalid marks! Must be 0-100.")
+                self.toast.show("Invalid marks! Must be 0-100.", type="error")
                 return
 
             # Update Data
@@ -547,7 +964,7 @@ class ModernApp:
             self.db.update_student(student['roll_no'], student)
             self.load_data()
             self.refresh_table()
-            messagebox.showinfo("Success", "Student updated successfully!")
+            self.toast.show("Student updated successfully!", type="success")
             edit_win.destroy()
 
         self.create_btn(edit_win, "💾 Update", save_changes, width=20).pack(pady=30)
@@ -626,6 +1043,10 @@ class ModernApp:
         grade_order = ["A+", "A", "B", "C", "D", "Fail"]
         counts = [grade_counts.get(g, 0) for g in grade_order]
 
+        # Theme adjustments for Matplotlib
+        text_color = "white" if self.current_theme == "dark" else "black"
+        axes_bg = COLORS["card_bg"] if self.current_theme == "dark" else "#F9F9F9"
+
         # Close previous figures to avoid memory leak
         plt.close('all')
 
@@ -636,24 +1057,27 @@ class ModernApp:
         # 1. Grade Distribution (Bar Chart) - ax1
         color_map = ["#2ECC71", "#27AE60", "#F1C40F", "#E67E22", "#E74C3C", "#C0392B"]
         bars = ax1.bar(grade_order, counts, color=color_map)
-        ax1.set_title("Grade Distribution", fontsize=10, fontweight='bold')
-        ax1.set_facecolor("#F9F9F9")
-        ax1.tick_params(labelsize=8)
+        ax1.set_title("Grade Distribution", fontsize=10, fontweight='bold', color=text_color)
+        ax1.set_facecolor(axes_bg)
+        ax1.tick_params(labelsize=8, colors=text_color)
         ax1.spines['top'].set_visible(False)
         ax1.spines['right'].set_visible(False)
+        ax1.spines['bottom'].set_color(text_color)
+        ax1.spines['left'].set_color(text_color)
         
         for bar in bars:
             height = bar.get_height()
             if height > 0:
                 ax1.text(bar.get_x() + bar.get_width()/2., height,
                          f'{int(height)}',
-                         ha='center', va='bottom', fontsize=8)
+                         ha='center', va='bottom', fontsize=8, color=text_color)
 
         # 2. Pass vs Fail (Pie Chart) - ax2
         if total_students > 0:
             ax2.pie([passed, failed], labels=['Passed', 'Failed'], autopct='%1.1f%%', 
-                    colors=['#2ECC71', '#E74C3C'], startangle=90, explode=(0.1, 0), shadow=True, textprops={'fontsize': 8})
-            ax2.set_title("Pass vs Fail Ratio", fontsize=10, fontweight='bold')
+                    colors=['#2ECC71', '#E74C3C'], startangle=90, explode=(0.1, 0), shadow=True, 
+                    textprops={'fontsize': 8, 'color': text_color})
+            ax2.set_title("Pass vs Fail Ratio", fontsize=10, fontweight='bold', color=text_color)
 
         # 3. Subject Performance (Avg Marks) - ax3
         subjects = ["Mathematics", "Physics", "Chemistry", "English", "Computer Science"]
@@ -667,14 +1091,18 @@ class ModernApp:
         y_pos = range(len(subjects))
         ax3.barh(y_pos, subj_avgs, color="#3498DB")
         ax3.set_yticks(y_pos)
-        ax3.set_yticklabels(subjects, fontsize=8)
-        ax3.set_title("Avg Subject Performance", fontsize=10, fontweight='bold')
+        ax3.set_yticklabels(subjects, fontsize=8, color=text_color)
+        ax3.set_facecolor(axes_bg)
+        ax3.tick_params(labelsize=8, colors=text_color)
+        ax3.set_title("Avg Subject Performance", fontsize=10, fontweight='bold', color=text_color)
         ax3.set_xlim(0, 100)
         ax3.spines['top'].set_visible(False)
         ax3.spines['right'].set_visible(False)
+        ax3.spines['bottom'].set_color(text_color)
+        ax3.spines['left'].set_color(text_color)
         
         for i, v in enumerate(subj_avgs):
-            ax3.text(v + 1, i, f"{v:.1f}", va='center', fontsize=8)
+            ax3.text(v + 1, i, f"{v:.1f}", va='center', fontsize=8, color=text_color)
 
 
         canvas = FigureCanvasTkAgg(fig, master=chart_frame)
@@ -682,23 +1110,24 @@ class ModernApp:
         canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def create_kpi_card(self, parent, title, value, color):
-        card = tk.Frame(parent, bg="white", padx=15, pady=15)
+        card = tk.Frame(parent, bg=COLORS["card_bg"], padx=15, pady=15)
         
         # Color Strip
         tk.Frame(card, bg=color, width=5).pack(side="left", fill="y", padx=(0, 10))
         
-        content = tk.Frame(card, bg="white")
+        content = tk.Frame(card, bg=COLORS["card_bg"])
         content.pack(side="left", fill="both")
         
-        tk.Label(content, text=title, font=("Segoe UI", 10), bg="white", fg="gray").pack(anchor="w")
-        tk.Label(content, text=value, font=("Segoe UI", 16, "bold"), bg="white", fg=COLORS["text_dark"]).pack(anchor="w")
+        fg_gray = "#BDC3C7" if self.current_theme == "dark" else "gray"
+        tk.Label(content, text=title, font=("Segoe UI", 10), bg=COLORS["card_bg"], fg=fg_gray).pack(anchor="w")
+        tk.Label(content, text=value, font=("Segoe UI", 16, "bold"), bg=COLORS["card_bg"], fg=COLORS["text_dark"]).pack(anchor="w")
         
         return card
 
 
     def export_pdf_list(self):
         if not self.students:
-            messagebox.showwarning("No Data", "No student data to export.")
+            self.toast.show("No student data to export.", type="warning")
             return
 
         # Apply Filter if active
@@ -715,7 +1144,7 @@ class ModernApp:
             report_title = "Student Result Report"
         
         if not data_to_export:
-             messagebox.showinfo("Export", "No students found for the selected filter.")
+             self.toast.show("No students found for the selected filter.", type="warning")
              return
 
         file_path = filedialog.asksaveasfilename(
@@ -777,14 +1206,14 @@ class ModernApp:
                 
                 self.root.after(0, lambda: [
                     self.root.config(cursor=""),
-                    messagebox.showinfo("Success", f"Full Report saved successfully at:\n{file_path}"),
+                    self.toast.show("Full Report saved successfully!", type="success"),
                     os.startfile(file_path)
                 ])
                 
             except Exception as e:
                 self.root.after(0, lambda: [
                     self.root.config(cursor=""),
-                    messagebox.showerror("Export Error", f"Failed to export PDF: {e}")
+                    self.toast.show(f"Failed to export PDF: {e}", type="error")
                 ])
 
         threading.Thread(target=run_export, daemon=True).start()
@@ -793,7 +1222,7 @@ class ModernApp:
     def generate_pdf_report(self):
         selected = self.tree.selection()
         if not selected:
-            messagebox.showwarning("Select Student", "Please select a student to generate the result card.")
+            self.toast.show("Please select a student to generate the result card.", type="warning")
             return
 
         # Get student data
@@ -819,13 +1248,13 @@ class ModernApp:
                 time.sleep(0.5) # Simulate processing
                 self.root.after(0, lambda: [
                     self.root.config(cursor=""),
-                    messagebox.showinfo("Success", f"Result Card generated successfully!\nSaved at: {file_path}"),
+                    self.toast.show("Result Card generated successfully!", type="success"),
                     os.startfile(file_path)
                 ])
             except Exception as e:
                 self.root.after(0, lambda: [
                     self.root.config(cursor=""),
-                    messagebox.showerror("Error", f"Failed to generate PDF: {e}")
+                    self.toast.show(f"Failed to generate PDF: {e}", type="error")
                 ])
 
         threading.Thread(target=run_generate, daemon=True).start()
